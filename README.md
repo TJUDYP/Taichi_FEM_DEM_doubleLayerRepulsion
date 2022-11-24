@@ -18,11 +18,13 @@
 ### 参考资料
 
 有限单元法求解双电层排斥力：
+
 1991-Numerical Study of The Electrical Double-Layer Repulsion Between Nonparallel Clay Particles of Finite Length[J]. International Journal for Numerical and Analytical Methods in Geomechanics[doi:10.1002/nag.1610151002](https://onlinelibrary.wiley.com/doi/10.1002/nag.1610151002)
 
 2020-Numerical Studies on Electrical Interaction Forces and Free Energy between Colloidal Plates of Finite Size[J]. LANGMUIR [doi:10.1021/acs.langmuir.9b02981](https://pubs.acs.org/doi/10.1021/acs.langmuir.9b02981)
 
 离散单元法应用双电层斥力：
+
 2003-Three-Dimensional Discrete Element Method of Analysis of Clays[J]. Journal of Engineering Mechanics [doi:10.1061/(asce)0733-9399(2003)129:6(585)](https://ascelibrary.org/doi/10.1061/%28ASCE%290733-9399%282003%29129%3A6%28585%29)
 
 2022-Discrete-element simulation of drying effect on the volume and equivalent effective stress of kaolinite[J]. Géotechnique [doi:10.1680/jgeot.18.P.239](https://www.icevirtuallibrary.com/doi/full/10.1680/jgeot.18.P.239)
