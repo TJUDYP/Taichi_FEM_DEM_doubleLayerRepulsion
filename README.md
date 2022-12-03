@@ -40,9 +40,11 @@
      （2）离散元部分的内容暂时做不完了，Hackathon之后再接着做
 下次一定找队友组队，一起搞
 
-     （3）对比taichi+gmsh、numpy+scipy+gmsh、Matlab三者的划分网格与组装矩阵的速度（不包含计算）
+     （3）对比taichi+gmsh、numpy+scipy+gmsh、Matlab三者的划分网格与组装矩阵的速度（不包含解矩阵，均在cpu：i5-8259U CPU @ 2.30GHz上运行）
  
 gmsh库用于前处理划分网格，并将网格数据导入到taichi或numpy中进行计算
+
+<img src="time_compare.png" width="700" /> 
      
      （4）未完待续，正在更新...
 
