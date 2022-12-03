@@ -19,18 +19,18 @@
 
      （1）求解Poisson-Boltzmann方程（PB方程）改为求解Poisson方程
       
-  Poisson-Boltzmann方程( $a$ 、 $b$ 为常数， $\psi$ 为电势)：
+  [Poisson-Boltzmann方程](https://en.wikipedia.org/wiki/Poisson%E2%80%93Boltzmann_equation)( $a$ 、 $b$ 为常数， $\psi$ 为电势)：
   
   $$ \Delta \psi = a*sinh(b*\psi)$$
   
-  Poisson方程( $f$ 为普通函数，如： $sin(x+y)$ 、 $1.0$ 、 $x^2$ 等)：
+  [Poisson方程](https://en.wikipedia.org/wiki/Poisson%27s_equation)( $f$ 为普通函数，如： $sin(x+y)$ 、 $1.0$ 、 $x^2$ 等)：
   
   
   $$ \Delta \psi = f$$
       
   taichi中稀疏矩阵的创建与计算(主要求解线性方程组)，在规模比较大的情况下，稀疏矩阵的存取会比较慢（相较于scipy与numpy而言）。
   
-  而PB方程的求解需要用到稀疏矩阵多次迭代求解，在数据量比较大的情况下计算会很慢，考虑到项目的重点是采用taichi来尝试进行有限元计算，因此本项目将PB方程的求解改为普通Poisson方程的求解（二者的差别仅在于PB方程右侧是一个双曲正弦函数，需要多次迭代求解，而普通Poisson方程只需一次求解即可）。期待taichi以后能有更多稀疏矩阵计算的功能～
+  而PB方程的求解需要用到稀疏矩阵多次迭代求解，在数据量比较大的情况下计算会很慢，考虑到项目的重点是采用taichi来尝试进行有限元计算，因此本项目将PB方程的求解改为普通Poisson方程的求解（二者的差别仅在于PB方程右侧是一个包含电势 $\psi$ 的双曲正弦函数，需要用数值方法多次迭代求解，而普通Poisson方程只需一次求解即可）。期待taichi以后能有更多稀疏矩阵计算的功能～
 
  下图为分别使用商业有限元软件COMSOL、taichi + gmsh、numpy+scipy+gmsh对Poisson方程中f=sin(x+y)情况下的求解结果，边界条件为Dirichlet条件。此步骤的目的是通过商业软件验算自己代码计算结果的可靠性。
  
@@ -41,7 +41,8 @@
 下次一定找队友组队，一起搞
 
      （3）对比taichi+gmsh、numpy+scipy+gmsh、Matlab三者的划分网格与组装矩阵的速度（不包含计算）
-     
+ 
+gmsh库用于前处理划分网格，并将网格数据导入到taichi或numpy中进行计算
      
 
 
