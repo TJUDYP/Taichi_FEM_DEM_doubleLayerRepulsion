@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 
 ti.init(arch = ti.cpu)
 
+
+# ===================================================================
+# using gmsh to generate mesh in following Finete element analysis
+# ===================================================================
 gmsh.initialize()
 
 gmsh.model.add("t1")
@@ -43,15 +47,26 @@ gmsh.model.geo.addLine(8, 5, 8)
 gmsh.model.geo.addCurveLoop([5, 6, 7, 8], 2)
 
 # =========================================
-#gmsh.model.geo.addPlaneSurface([1], 1)
 gmsh.model.geo.addPlaneSurface([1, 2], 1)
 
 gmsh.model.geo.synchronize()
 gmsh.model.mesh.generate(2)
 
-entities = gmsh.model.getEntities()
+# =========================================
+# get the boundary node tags to give Dirichlet or Neumann boundary condition
+for i in range(8):
+    gmsh.model.mesh.create_edges(dimTags=[(1, i+1)])
 
-# get the data of triangles and coords in mesh
+edgeTags, edgeNodes = gmsh.model.mesh.getAllEdges()
+edgeTags  = edgeTags.reshape(-1, 1)
+edgeNodes = edgeNodes.reshape(-1, 2)
+
+edge = np.concatenate((edgeTags, edgeNodes), axis=1)
+node_tags_boundary = edge[np.argsort(edge[:,0])]
+
+# =========================================
+# get the data of triangles'tags in mesh
+entities = gmsh.model.getEntities()
 for e in entities:
     if e[0] == 2:
 
@@ -63,6 +78,7 @@ for e in entities:
         
 element_node_tags = np.reshape(elemNodeTags, (np.shape(elemTags)[1], 3))
 
+# =========================================
 # in gmsh, get all the nodes and coords if dim = -1 and tag = -1
 dim = -1
 tag = -1
@@ -70,45 +86,32 @@ nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, tag)
 node_tags = nodeTags
 node_coords = np.reshape(nodeCoords, (np.shape(nodeTags)[0], 3))
 
-# get the tags of boundary nodes
-
-nodeTags_boundary_exterior = np.array([], dtype = np.uint64)
-nodeTags_boundary_interior = np.array([], dtype = np.uint64)
-
-for e in entities:
-    
-    if e[0] != 2:
-        dim = e[0]
-        tag = e[1]        
-        nodeTags, nodeCoords, nodeParams = gmsh.model.mesh.getNodes(dim, tag)
-        
-        if e[1] <= 4:
-            nodeTags_boundary_exterior = np.append(nodeTags_boundary_exterior, np.array(nodeTags, dtype=np.uint64))
-        else:
-            nodeTags_boundary_interior = np.append(nodeTags_boundary_interior, np.array(nodeTags, dtype=np.uint64))
-
-node_tags_boundary_exterior = nodeTags_boundary_exterior
-node_tags_boundary_interior = nodeTags_boundary_interior
-node_tags_others = np.delete(node_tags, np.concatenate((node_tags_boundary_exterior-1, node_tags_boundary_interior-1)))
-
+# =========================================
 gmsh.clear()
 gmsh.finalize()
 
 
+# ===================================================================
+# using taichi to finish the Finete element analysis
+# ===================================================================
 
 number_points    = np.shape(node_coords)[0]
 number_elements  = np.shape(element_node_tags)[0]
 
 node_coords_taichi = ti.Vector.field(n = 3, dtype = ti.f64, shape = node_coords.shape[0])
+element_node_tags_taichi = ti.Vector.field(n = 3, dtype = ti.i32, shape = element_node_tags.shape[0])
+node_tags_boundary_taichi = ti.Vector.field(n = 3, dtype = ti.i32, shape = node_tags_boundary.shape[0])
+
 node_coords_taichi.from_numpy(node_coords)
-element_node_tags_taichi = ti.Vector.field(n = 3, dtype = ti.u64, shape = element_node_tags.shape[0])
-element_node_tags_taichi.from_numpy(element_node_tags)
+element_node_tags_taichi.from_numpy(element_node_tags.astype(np.int32))
+node_tags_boundary_taichi.from_numpy(node_tags_boundary.astype(np.int32))
 
-A_taichi = ti.field(ti.f64, shape = (number_points, number_points))
-M_taichi = ti.field(ti.f64, shape = (number_points, number_points))
+A = ti.linalg.SparseMatrixBuilder(number_points, number_points, max_num_triplets= 20 * number_points)
+R = ti.linalg.SparseMatrixBuilder(number_points, number_points, max_num_triplets= 20 * number_points)
 b_taichi = ti.field(ti.f64, shape = (number_points, 1))
-loc2glb_taichi = ti.Vector.field(n = 3, dtype = ti.u64, shape = ())
+r_taichi = ti.field(ti.f64, shape = (number_points, 1))
 
+loc2glb_taichi = ti.Vector.field(n = 3, dtype = ti.i32, shape = ())
 
 @ti.func
 def polygon_area(x, y) -> ti.f64:
@@ -128,20 +131,25 @@ def hat_gradients(x, y) -> ti.Vector:
     return ti.Vector([area, gra_1, gra_2])
 
 @ti.kernel
-def stiffness_assembler_2D():
+def stiffness_assembler_2D(A: ti.types.sparse_matrix_builder()):
     
     for i in range(number_elements):
+        
         loc2glb_taichi[None] = element_node_tags_taichi[i] - 1
+
+        n1 = loc2glb_taichi[None][0]
+        n2 = loc2glb_taichi[None][1]
+        n3 = loc2glb_taichi[None][2]
         
         # can't using slice in taichi :-( 
         # using this method to alternative
-        x1 = node_coords_taichi[loc2glb_taichi[None][0]][0]
-        x2 = node_coords_taichi[loc2glb_taichi[None][1]][0]
-        x3 = node_coords_taichi[loc2glb_taichi[None][2]][0]
+        x1 = node_coords_taichi[n1][0]
+        x2 = node_coords_taichi[n2][0]
+        x3 = node_coords_taichi[n3][0]
         
-        y1 = node_coords_taichi[loc2glb_taichi[None][0]][1]
-        y2 = node_coords_taichi[loc2glb_taichi[None][1]][1]
-        y3 = node_coords_taichi[loc2glb_taichi[None][2]][1]
+        y1 = node_coords_taichi[n1][1]
+        y2 = node_coords_taichi[n2][1]
+        y3 = node_coords_taichi[n3][1]
         
         x = ti.Vector([x1, x2, x3])
         y = ti.Vector([y1, y2, y3])
@@ -150,52 +158,46 @@ def stiffness_assembler_2D():
         grad_1 = hat_gradients(x, y)[1]
         grad_2 = hat_gradients(x, y)[2]
     
-        A_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][0]] += area*(grad_1[0]*grad_1[0]+grad_2[0]*grad_2[0])
-        A_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][1]] += area*(grad_1[0]*grad_1[1]+grad_2[0]*grad_2[1])
-        A_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][2]] += area*(grad_1[0]*grad_1[2]+grad_2[0]*grad_2[2])
-        A_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][0]] += area*(grad_1[1]*grad_1[0]+grad_2[1]*grad_2[0])
-        A_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][1]] += area*(grad_1[1]*grad_1[1]+grad_2[1]*grad_2[1])
-        A_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][2]] += area*(grad_1[1]*grad_1[2]+grad_2[1]*grad_2[2])
-        A_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][0]] += area*(grad_1[2]*grad_1[0]+grad_2[2]*grad_2[0])
-        A_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][1]] += area*(grad_1[2]*grad_1[1]+grad_2[2]*grad_2[1])
-        A_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][2]] += area*(grad_1[2]*grad_1[2]+grad_2[2]*grad_2[2])
+        A[n1, n1] += area*(grad_1[0]*grad_1[0]+grad_2[0]*grad_2[0])
+        A[n1, n2] += area*(grad_1[0]*grad_1[1]+grad_2[0]*grad_2[1])
+        A[n1, n3] += area*(grad_1[0]*grad_1[2]+grad_2[0]*grad_2[2])
+        A[n2, n1] += area*(grad_1[1]*grad_1[0]+grad_2[1]*grad_2[0])
+        A[n2, n2] += area*(grad_1[1]*grad_1[1]+grad_2[1]*grad_2[1])
+        A[n2, n3] += area*(grad_1[1]*grad_1[2]+grad_2[1]*grad_2[2])
+        A[n3, n1] += area*(grad_1[2]*grad_1[0]+grad_2[2]*grad_2[0])
+        A[n3, n2] += area*(grad_1[2]*grad_1[1]+grad_2[2]*grad_2[1])
+        A[n3, n3] += area*(grad_1[2]*grad_1[2]+grad_2[2]*grad_2[2])
 
 @ti.kernel
-def mass_assembler_2D():
-    
-    for i in range(number_elements):
-        loc2glb_taichi[None] = element_node_tags_taichi[i] - 1
+def robin_mass_matrix_2D(R: ti.types.sparse_matrix_builder(), kappa: ti.f64):
+
+    for i in range(node_tags_boundary.shape[0]):
         
-        # can't using slice in taichi :-( 
-        # using this method to alternative
-        x1 = node_coords_taichi[loc2glb_taichi[None][0]][0]
-        x2 = node_coords_taichi[loc2glb_taichi[None][1]][0]
-        x3 = node_coords_taichi[loc2glb_taichi[None][2]][0]
+        n1 = int(node_tags_boundary_taichi[i][1] - 1)
+        n2 = int(node_tags_boundary_taichi[i][2] - 1)
         
-        y1 = node_coords_taichi[loc2glb_taichi[None][0]][1]
-        y2 = node_coords_taichi[loc2glb_taichi[None][1]][1]
-        y3 = node_coords_taichi[loc2glb_taichi[None][2]][1]
+        x1 = node_coords_taichi[n1][0]
+        x2 = node_coords_taichi[n2][0]
         
-        x = ti.Vector([x1, x2, x3])
-        y = ti.Vector([y1, y2, y3])
+        y1 = node_coords_taichi[n1][1]
+        y2 = node_coords_taichi[n2][1]
         
-        area = polygon_area(x, y)
-    
-        M_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][0]] += 2.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][1]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][0], loc2glb_taichi[None][2]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][0]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][1]] += 2.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][1], loc2glb_taichi[None][2]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][0]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][1]] += 1.0 / 12.0 * area
-        M_taichi[loc2glb_taichi[None][2], loc2glb_taichi[None][2]] += 2.0 / 12.0 * area
+        length = tm.sqrt((x1-x2)**2+(y1-y2)**2)
+        
+        k = kappa
+        
+        R[n1, n1] += k / 6 * 2 * length
+        R[n1, n2] += k / 6 * 1 * length
+        R[n2, n1] += k / 6 * 1 * length
+        R[n2, n2] += k / 6 * 2 * length   
 
 @ti.func
-def load_fun(x, y) -> ti.f64:    
+def load_fun(x, y) -> ti.f64:
+    
     # specify the function on the right side of Possion function yourself. :-)
     f = tm.sin(x + y) 
-    #f = 1.0   
+    #f = 1.0
+    
     return f
 
 @ti.kernel
@@ -203,56 +205,75 @@ def load_assembler_2D():
     
     for i in range(number_elements):
         loc2glb_taichi[None] = element_node_tags_taichi[i] - 1
+                   
+        n1 = ti.cast(loc2glb_taichi[None][0], ti.i32)
+        n2 = ti.cast(loc2glb_taichi[None][1], ti.i32)
+        n3 = ti.cast(loc2glb_taichi[None][2], ti.i32)
         
-        # can't using slice in taichi :-( 
-        # using this method to alternative
-        x1 = node_coords_taichi[loc2glb_taichi[None][0]][0]
-        x2 = node_coords_taichi[loc2glb_taichi[None][1]][0]
-        x3 = node_coords_taichi[loc2glb_taichi[None][2]][0]
+        x1 = node_coords_taichi[n1][0]
+        x2 = node_coords_taichi[n2][0]
+        x3 = node_coords_taichi[n3][0]
         
-        y1 = node_coords_taichi[loc2glb_taichi[None][0]][1]
-        y2 = node_coords_taichi[loc2glb_taichi[None][1]][1]
-        y3 = node_coords_taichi[loc2glb_taichi[None][2]][1]
+        y1 = node_coords_taichi[n1][1]
+        y2 = node_coords_taichi[n2][1]
+        y3 = node_coords_taichi[n3][1]
         
         x = ti.Vector([x1, x2, x3])
         y = ti.Vector([y1, y2, y3])
         
         area = polygon_area(x, y)
         
-        b_taichi[loc2glb_taichi[None][0], 0] += load_fun(x[0], y[0]) / 3.0 * area
-        b_taichi[loc2glb_taichi[None][1], 0] += load_fun(x[1], y[1]) / 3.0 * area
-        b_taichi[loc2glb_taichi[None][2], 0] += load_fun(x[2], y[2]) / 3.0 * area
+        b_taichi[n1, 0] += load_fun(x[0], y[0]) / 3.0 * area
+        b_taichi[n2, 0] += load_fun(x[1], y[1]) / 3.0 * area
+        b_taichi[n3, 0] += load_fun(x[2], y[2]) / 3.0 * area
 
-      
-stiffness_assembler_2D()
-mass_assembler_2D()
+@ti.kernel
+def robin_load_vector_2D(kappa: ti.f64, gD: ti.f64, gN: ti.f64):
+    
+    for i in range(node_tags_boundary.shape[0]):
+        
+        n1 = int(node_tags_boundary_taichi[i][1] - 1)
+        n2 = int(node_tags_boundary_taichi[i][2] - 1)
+        
+        x1 = node_coords_taichi[n1][0]
+        x2 = node_coords_taichi[n2][0]
+        
+        y1 = node_coords_taichi[n1][1]
+        y2 = node_coords_taichi[n2][1]
+        
+        length = tm.sqrt((x1-x2)**2+(y1-y2)**2)
+        
+        tmp = kappa * gD + gN
+        
+        r_taichi[n1, 0] += tmp * 1 * length / 2
+        r_taichi[n2, 0] += tmp * 1 * length / 2
+
+# =========================================
+# using sparse matrix in taichi to compute the result
+stiffness_assembler_2D(A)
+A_taichi = A.build()
+
+robin_mass_matrix_2D(R, 1000000.0)
+R_taichi = R.build()
+
 load_assembler_2D()
+robin_load_vector_2D(1000000.0, 0.0, 0.0)
 
+A_solver = A_taichi + R_taichi
+b_solver = b_taichi.to_numpy() + r_taichi.to_numpy()
 
-A = A_taichi.to_numpy()
-b = b_taichi.to_numpy()
+solver = ti.linalg.SparseSolver(solver_type="LLT")
+solver.analyze_pattern(A_solver)
+solver.factorize(A_solver)
+xi = solver.solve(b_solver)
 
-A_00 = A[np.ix_(node_tags_others-1, node_tags_others-1)]
-A_0b = np.concatenate((A[np.ix_(node_tags_others-1, node_tags_boundary_exterior-1)], \
-                       A[np.ix_(node_tags_others-1, node_tags_boundary_interior-1)]), axis = 1)
-b_0 = b[node_tags_others-1]
-b_b = np.concatenate((np.array([[0]]*node_tags_boundary_exterior.shape[0]), \
-                      np.array([[0]]*node_tags_boundary_interior.shape[0])), axis = 0)
-
-xi = np.zeros((node_tags.shape[0], 1), dtype = np.float64)
-xi[np.concatenate((node_tags_boundary_exterior-1, node_tags_boundary_interior-1))] = b_b
-
-# xi[node_tags_others-1] = np.linalg.solve(A_00, b_0-np.matmul(A_0b, b_b))
-
-xi[node_tags_others-1] = np.reshape(spsolve(sparse.csc_matrix(A_00), b_0-np.matmul(A_0b, b_b)), (node_tags_others.shape[0], 1))
-
+# =========================================
 plt.figure(figsize = (7.5, 6))
-plt.scatter(node_coords[:,0], node_coords[:,1], c = xi, s=10.0, cmap='viridis')
+plt.scatter(node_coords[:,0], node_coords[:,1], c = xi, s = 10.0, cmap='viridis')
 plt.colorbar()
+
 plt.savefig('taichi_cal.jpg', dpi=600)
 plt.show()
 
-
-
-
-
+print("节点总数：", np.shape(node_coords)[0])    
+print("三角形单元总数：", np.shape(element_node_tags)[0])
