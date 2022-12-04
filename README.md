@@ -15,8 +15,27 @@
 在当前的研究中，（1）求解过程与（2）运动过程是分开实现，且对PB方程的结果进行拟合或简化会存在一定的误差，因此本项目拟使用Taichi，在每个时间步内通过有限单元法对颗粒之间的双电层斥力进行求解，并使用离散单元法对颗粒的速度与位置进行更新。
 
 ##
+
+### 使用 taichi + gmsh 求解Poisson方程
+
+#### （1）安装库
      pip install taichi
      pip install gmsh
+
+gmsh用于前处理划分网格，taichi用于有限元求解
+
+#### （2）调整 01_fem_taichi.py 中的 lc 系数，修改网格疏密程度
+     time python 01_fem_taichi.py
+     
+     即可得到如下结果：
+     
+<img src="taichi_cal.jpg" width="256" />
+
+对比采用numpy+scipy、matlab方式，三者在不同节点与网格数下的求解时间如下图所示（均在cpu：i5-8259U CPU @ 2.30GHz上运行）：
+
+<img src="time_compare.png" width="700" /> 
+
+由上图可知，采用taichi+gmsh组合的方式，可以在个人笔记本上较为简单地实现百万网格分钟级计算。
      
 
 
@@ -48,8 +67,11 @@
 
 ##
 ### 2022/12/04 更新
-     （1）对比taichi+gmsh、numpy+scipy+gmsh、Matlab三者的划分网格与组装矩阵的速度
-     （不包含解矩阵，均在cpu：i5-8259U CPU @ 2.30GHz上运行）
+     
+     （1）加入taichi的稀疏矩阵功能
+     
+     （2）对比taichi+gmsh、numpy+scipy+gmsh、Matlab三者的划分网格与组装矩阵的速度
+     （均在cpu：i5-8259U CPU @ 2.30GHz上运行）
  
 gmsh库用于前处理划分网格，并将网格数据导入到taichi或numpy中进行计算
 
