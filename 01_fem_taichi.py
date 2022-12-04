@@ -2,8 +2,6 @@ import taichi as ti
 import taichi.math as tm
 import gmsh
 import numpy as np
-from scipy import sparse
-from scipy.sparse.linalg import spsolve
 import matplotlib.pyplot as plt
 
 ti.init(arch = ti.cpu)
