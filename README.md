@@ -33,7 +33,7 @@ gmsh用于前处理划分网格，taichi用于有限元求解
 
 对比采用numpy+scipy、matlab方式，三者在不同节点与网格数下的求解时间如下图所示（均在cpu：i5-8259U CPU @ 2.30GHz上运行）：
 
-<img src="time_compare.png" width="700" /> 
+<img src="time_compare_3_ways.png" width="700" /> 
 
 由上图可知，采用taichi+gmsh组合的方式，可以在个人笔记本上较为简单地实现百万网格分钟级计算。
      
@@ -75,7 +75,7 @@ gmsh用于前处理划分网格，taichi用于有限元求解
  
 gmsh库用于前处理划分网格，并将网格数据导入到taichi或numpy中进行计算
 
-<img src="time_compare.png" width="700" /> 
+<img src="time_compare_3_ways.png" width="700" /> 
 
 
      
